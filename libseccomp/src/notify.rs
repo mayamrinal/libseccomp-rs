@@ -76,6 +76,17 @@ impl ScmpFilterContext {
     ///
     /// If an issue is encountered getting the file descriptor,
     /// an error will be returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use libseccomp::*;
+    /// let mut ctx = ScmpFilterContext::new(ScmpAction::Allow)?;
+    /// ctx.add_rule(ScmpAction::Notify, ScmpSyscall::from_name("getpid")?)?;
+    /// ctx.load()?;
+    /// let fd = ctx.get_notify_fd()?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn get_notify_fd(&self) -> Result<ScmpFd> {
         notify_supported()?;
 
@@ -159,6 +170,33 @@ impl ScmpNotifReq {
     ///
     /// If an issue is encountered getting a notification request,
     /// an error will be returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use libseccomp::*;
+    /// # use libc::fork;
+    /// # use std::process::{exit, id};
+    /// // Get the current process ID
+    /// let parent_pid = id();
+    /// let mut ctx = ScmpFilterContext::new(ScmpAction::Allow)?;
+    /// ctx.add_rule(ScmpAction::Notify, ScmpSyscall::from_name("getpid")?)?;
+    /// ctx.load()?;
+    /// let fd = ctx.get_notify_fd()?;
+    /// let pid = unsafe { fork() };
+    /// if pid == 0 {
+    ///     // Child process
+    ///
+    ///     let child_pid = id();
+    ///     // The child PID will be same as the parent PID by the user notification.
+    ///     assert_eq!(child_pid, parent_pid);
+    ///     exit(0);
+    /// }
+    /// let req = ScmpNotifReq::receive(fd)?;
+    /// let resp = ScmpNotifResp::new_val(req.id, parent_pid as i64, ScmpNotifRespFlags::empty());
+    /// resp.respond(fd);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn receive(fd: ScmpFd) -> Result<Self> {
         notify_supported()?;
 
@@ -235,6 +273,12 @@ impl ScmpNotifResp {
     /// * `val` - Return value for the syscall that created the notification
     /// * `error` - An error code
     /// * `flags` - Userspace notification response flag
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let resp = ScmpNotifResp::new(req.id, val, error, flags);
+    /// ```
     #[must_use]
     pub fn new(id: u64, val: i64, error: i32, flags: u32) -> Self {
         Self {
@@ -330,6 +374,33 @@ impl ScmpNotifResp {
     ///
     /// If an issue is encountered responding a notification,
     /// an error will be returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use libseccomp::*;
+    /// # use libc::fork;
+    /// # use std::process::{exit, id};
+    /// // Get the current process ID
+    /// let parent_pid = id();
+    /// let mut ctx = ScmpFilterContext::new(ScmpAction::Allow)?;
+    /// ctx.add_rule(ScmpAction::Notify, ScmpSyscall::from_name("getpid")?)?;
+    /// ctx.load()?;
+    /// let fd = ctx.get_notify_fd()?;
+    /// let pid = unsafe { fork() };
+    /// if pid == 0 {
+    ///     // Child process
+    ///
+    ///     let child_pid = id();
+    ///     // The child PID will be same as the parent PID by the user notification.
+    ///     assert_eq!(child_pid, parent_pid);
+    ///     exit(0);
+    /// }
+    /// let req = ScmpNotifReq::receive(fd)?;
+    /// let resp = ScmpNotifResp::new_val(req.id, parent_pid as i64, ScmpNotifRespFlags::empty());
+    /// resp.respond(fd);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn respond(&self, fd: ScmpFd) -> Result<()> {
         notify_supported()?;
 
@@ -379,6 +450,26 @@ impl ScmpNotifResp {
 /// # Errors
 ///
 /// If the notification ID is invalid, an error will be returned.
+///
+/// # Examples
+///
+/// ```ignore
+/// # use libseccomp::*;
+/// let mut ctx = ScmpFilterContext::new(ScmpAction::Allow)?;
+/// ctx.add_rule(ScmpAction::Notify, ScmpSyscall::from_name("getpid")?)?;
+/// ctx.load()?;
+/// let fd = ctx.get_notify_fd()?;
+/// 
+/// // {Child process}
+/// 
+/// let req = ScmpNotifReq::receive(fd)?;
+/// // The parent process should ensure that <pid> still refers to the same task after opening it
+/// // by checking the validity of the request via `req.id`
+/// notify_id_valid(fd, req.id);
+/// let resp = ScmpNotifResp::new_val(req.id, parent_pid as i64, ScmpNotifRespFlags::empty());
+/// resp.respond(fd);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn notify_id_valid(fd: ScmpFd, id: u64) -> Result<()> {
     notify_supported()?;
 
